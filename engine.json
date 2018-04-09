@@ -1,0 +1,25 @@
+{
+  "id": "default",
+  "description": "Default settings",
+  "engineFactory": "com.thoughtworks.recommendation.ECommerceRecommendationEngine",
+  "datasource": {
+    "params" : {
+      "appName": "recommender"
+    }
+  },
+  "algorithms": [
+    {
+      "name": "ecomm",
+      "params": {
+        "appName": "recommender",
+        "unseenOnly": true,
+        "seenEvents": ["buy", "view"],
+        "similarEvents": ["view"],
+        "rank": 10,
+        "numIterations" : 20,
+        "lambda": 0.01,
+        "seed": 3
+      }
+    }
+  ]
+}
