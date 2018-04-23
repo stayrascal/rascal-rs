@@ -13,8 +13,8 @@
       "params": {
         "appName": "recommender",
         "unseenOnly": true,
-        "seenEvents": ["buy", "view"],
-        "similarEvents": ["view"],
+        "seenEvents": ["buy", "rating"],
+        "similarEvents": ["rating"],
         "rank": 10,
         "numIterations" : 20,
         "lambda": 0.01,

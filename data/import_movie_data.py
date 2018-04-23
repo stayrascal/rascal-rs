@@ -17,14 +17,14 @@ def import_events(client):
     print("Importing data...")
 
     with open('u.user') as user_file:
-        for line in user_file.readline():
-            fields = line.strip().split('\t')
+        for line in user_file.readlines():
+            fields = line.strip().split('|')
             client.create_event(
                 event='$set',
                 entity_id=fields[0],
                 entity_type='user',
                 properties={
-                    'age': fields[1],
+                    'age': int(fields[1]),
                     'gender': fields[2],
                     'occupation': fields[3],
                     'zipcode': fields[4]
@@ -77,11 +77,11 @@ def import_events(client):
                 target_entity_id=fields[1],
                 event_time=datetime.datetime.fromtimestamp(int(fields[3]), tz=pytz.utc),
                 properties={
-                    'rating': fields[2]
+                    'rating': float(fields[2])
                 }
 
             )
-            event_count += 0
+            event_count += 1
 
     print("%s events are imported." % event_count)
 

@@ -5,7 +5,7 @@ import org.apache.predictionio.controller.{P2LAlgorithm, Params}
 import org.apache.predictionio.data.storage.{BiMap, Event}
 import org.apache.predictionio.data.store.LEventStore
 import org.apache.spark.SparkContext
-import org.apache.spark.mllib.recommendation.{ALS, Rating => MLlibRating}
+import org.apache.spark.mllib.recommendation.{ALS, MatrixFactorizationModel, Rating => MLlibRating}
 import org.apache.spark.rdd.RDD
 
 import scala.collection.mutable.PriorityQueue
@@ -22,6 +22,12 @@ case class ECommAlgorithmParams(appName: String,
                                ) extends Params
 
 
+/**
+  *
+  * @param item     Product
+  * @param features Product Vector
+  * @param count    Product sell count
+  */
 case class ProductModel(item: Item,
                         features: Option[Array[Double]],
                         count: Int)
@@ -34,7 +40,8 @@ class ECommModel(val rank: Int,
                  val userFeatures: Map[Int, Array[Double]],
                  val productModels: Map[Int, ProductModel],
                  val userStringIntMap: BiMap[String, Int],
-                 val itemStringIntMap: BiMap[String, Int]
+                 val itemStringIntMap: BiMap[String, Int],
+                 val items: Map[Int, Item]
                 ) extends Serializable {
 
   @transient lazy val itemIntStringMap = itemStringIntMap.inverse
@@ -57,8 +64,8 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
   @transient lazy val logger = Logger[this.type]
 
   def train(sc: SparkContext, data: PreparedData): ECommModel = {
-    require(!data.viewEvents.take(1).isEmpty,
-      s"viewEvents in PreparedData cannot be empty." +
+    require(!data.ratingEvents.take(1).isEmpty,
+      s"ratingEvents in PreparedData cannot be empty." +
         " Please check if DataSource generates TrainingData" +
         " and Preprator generates PreparedData correctly.")
     require(!data.users.take(1).isEmpty,
@@ -80,27 +87,36 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
     )
 
 
-    require(!mllibRatings.take(1).isEmpty,
-      s"mllibRatings cannot be empty. Please check if your events contain valid user and item ID.")
+    require(!mllibRatings.take(1).isEmpty, s"mllibRatings cannot be empty. Please check if your events contain valid user and item ID.")
 
     val seed = ap.seed.getOrElse(System.nanoTime)
 
-    val m = ALS.trainImplicit(
+    /*val m = ALS.trainImplicit(
       ratings = mllibRatings,
       rank = ap.rank,
       iterations = ap.numIterations,
       lambda = ap.lambda,
       blocks = -1,
       alpha = 1.0,
-      seed = seed)
+      seed = seed)*/
 
+    val m: MatrixFactorizationModel = ALS.train(
+      ratings = mllibRatings,
+      rank = ap.rank, iterations = ap.numIterations,
+      lambda = ap.lambda,
+      blocks = -1,
+      seed = seed
+    )
+
+    // User Vectors
     val userFeatures = m.userFeatures.collectAsMap.toMap
 
     val items = data.items.map { case (id, item) => (itemStringIntMap(id), item) }
 
-
+    // Product Vectors
     val productFeatures: Map[Int, (Item, Option[Array[Double]])] = items.leftOuterJoin(m.productFeatures).collectAsMap.toMap
 
+    // User buy behavior
     val popularCount = trainDefault(
       userStringIntMap = userStringIntMap,
       itemStringIntMap = itemStringIntMap,
@@ -115,7 +131,8 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
       userFeatures = userFeatures,
       productModels = productModels,
       userStringIntMap = userStringIntMap,
-      itemStringIntMap = itemStringIntMap
+      itemStringIntMap = itemStringIntMap,
+      items = items.collectAsMap().toMap
     )
   }
 
@@ -124,7 +141,7 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
                      itemStringIntMap: BiMap[String, Int],
                      data: PreparedData): RDD[MLlibRating] = {
 
-    val mllibRatings = data.viewEvents
+    val mllibRatings = data.ratingEvents
       .map { r =>
         val uindex = userStringIntMap.getOrElse(r.user, -1)
         val iindex = itemStringIntMap.getOrElse(r.item, -1)
@@ -135,11 +152,10 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
         if (iindex == -1)
           logger.info(s"Couldn't convert nonexistent item ID ${r.item} to Int index.")
 
-        ((uindex, iindex), 1)
+        ((uindex, iindex), r.rating, r.timestamp)
       }
-      .filter { case ((u, i), v) => (u != -1) && (i != -1) }
-      .reduceByKey(_ + _)
-      .map { case ((u, i), v) => MLlibRating(u, i, v) }
+      .filter { case ((u, i), v, t) => (u != -1) && (i != -1) }
+      .map { case ((u, i), v, t) => MLlibRating(u, i, v) }
       .cache()
     mllibRatings
   }
@@ -167,14 +183,16 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
     buyCountsRDD.collectAsMap.toMap
   }
 
-  def predict(model: ECommModel, query: Query): PredictedResult = {
+  override def batchPredict(model: ECommModel, query: RDD[(Long, Query)]): RDD[(Long, PredictedResult)] = super.batchPredict(model, query)
 
+  def predict(model: ECommModel, query: Query): PredictedResult = {
     val userFeatures = model.userFeatures
     val productModels = model.productModels
+    //    query.whiteList.map(model.itemStringIntMap.get)
+    val whiteList: Option[Set[Int]] = query.whiteList.map(set => set.flatMap(model.itemStringIntMap.get))
 
-    val whiteList: Option[Set[Int]] = query.whiteList.map(set => set.flatMap(model.itemStringIntMap.get(_)))
 
-    val finalBlackList: Set[Int] = genBlackList(query = query).flatMap(x => model.itemStringIntMap.get(x))
+    val finalBlackList: Set[Int] = genBlackList(query = query).flatMap(model.itemStringIntMap.get)
 
     val weights: Map[Int, Double] = (for {
       group <- weightedItems
@@ -185,7 +203,22 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
     val userFeature: Option[Array[Double]] =
       model.userStringIntMap.get(query.user).flatMap { userIndex => userFeatures.get(userIndex) }
 
+    // 1. If this user can be found, will dot user vector and product vector, if not found, will get latest products the user viewed
+    // 2. If the latest products the user viewed can be found, find similar products
+    // 3. If the latest products the user viewed can not be found, order these products by sell count
     val topScores: Array[(Int, Double)] = if (userFeature.isDefined) {
+      /*val indexScores: Map[Int, Double] = productModels.par
+        .map { case (i, pm) =>
+          val s = dotProduct(userFeature.get, pm.features.get)
+          (i, s)
+        }
+        .filter(_._2 > 0)
+        .seq
+
+      val ord = Ordering.by[(Int, Double), Double](_._2).reverse
+      val topScores = getTopN(indexScores, query.num)(ord).toArray
+
+      topScores*/
       predictKnownUser(
         userFeature = userFeature.get,
         productModels = productModels,
@@ -195,6 +228,8 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
         weights = weights
       )
     } else {
+      /*logger.info(s"No prediction for unknown user ${query.user}.")
+      Array.empty[(Int, Double)]*/
       logger.info(s"No userFeature found for user ${query.user}.")
 
       val recentItems: Set[String] = getRecentItems(query)
@@ -224,7 +259,18 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
       }
     }
 
-    val itemScores = topScores.map { case (i, s) => new ItemScore(item = model.itemIntStringMap(i), score = s) }
+
+
+    val itemScores = topScores.map { case (i, s) =>
+      val it = model.items(i)
+
+      new ItemScore(
+        item = model.itemIntStringMap(i),
+        title = it.title,
+        releaseDate = it.releaseDate,
+        genres = Constants.GENDER_FIELDS.zip(it.genres).toMap,
+        score = s)
+    }
 
     new PredictedResult(itemScores)
   }
@@ -330,7 +376,7 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
         targetEntityType = Some(Some("item")),
         limit = Some(10),
         latest = true,
-        timeout = Duration(200, "millis")
+        timeout = Duration(600, "millis")
       )
     } catch {
       case e: scala.concurrent.TimeoutException =>
@@ -365,13 +411,7 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
     val indexScores: Map[Int, Double] = productModels.par
       .filter { case (i, pm) =>
         pm.features.isDefined &&
-          isCandidateItem(
-            i = i,
-            item = pm.item,
-            categories = query.categories,
-            whiteList = whiteList,
-            blackList = blackList
-          )
+          isCandidateItem(i, pm.item, query.genres, whiteList, blackList)
       }
       .map { case (i, pm) =>
         val s = dotProduct(userFeature, pm.features.get)
@@ -395,13 +435,7 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
                     ): Array[(Int, Double)] = {
     val indexScores: Map[Int, Double] = productModels.par
       .filter { case (i, pm) =>
-        isCandidateItem(
-          i = i,
-          item = pm.item,
-          categories = query.categories,
-          whiteList = whiteList,
-          blackList = blackList
-        )
+        isCandidateItem(i, pm.item, query.genres, whiteList, blackList)
       }
       .map { case (i, pm) =>
         val s = pm.count.toDouble
@@ -424,15 +458,8 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
                      weights: Map[Int, Double]
                     ): Array[(Int, Double)] = {
     val indexScores: Map[Int, Double] = productModels.par
-      .filter { case (i, pm) =>
-        pm.features.isDefined &&
-          isCandidateItem(
-            i = i,
-            item = pm.item,
-            categories = query.categories,
-            whiteList = whiteList,
-            blackList = blackList
-          )
+      .filter { case (index, pm) =>
+        pm.features.isDefined && isCandidateItem(index, pm.item, query.genres, whiteList, blackList)
       }
       .map { case (i, pm) =>
         val s = recentFeatures.map { rf => cosine(rf, pm.features.get) }.reduce(_ + _)
@@ -467,7 +494,7 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
   }
 
   private def dotProduct(v1: Array[Double], v2: Array[Double]): Double = {
-    val size = v1.size
+    val size = v1.length
     var i = 0
     var d: Double = 0
     while (i < size) {
@@ -478,7 +505,7 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
   }
 
   private def cosine(v1: Array[Double], v2: Array[Double]): Double = {
-    val size = v1.size
+    val size = v1.length
     var i = 0
     var n1: Double = 0
     var n2: Double = 0
@@ -489,20 +516,21 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
       d += v1(i) * v2(i)
       i += 1
     }
-    val n1n2 = (math.sqrt(n1) * math.sqrt(n2))
-    if (n1n2 == 0) 0 else (d / n1n2)
+    val n1n2 = math.sqrt(n1) * math.sqrt(n2)
+    if (n1n2 == 0) 0 else d / n1n2
   }
 
-  private
-  def isCandidateItem(i: Int,
-                      item: Item,
-                      categories: Option[Set[String]],
-                      whiteList: Option[Set[Int]],
-                      blackList: Set[Int]
-                     ): Boolean = {
-    whiteList.map(_.contains(i)).getOrElse(true) && !blackList.contains(i) &&
-      categories.map { cat => item.categories.map { itemCat => !(itemCat.toSet.intersect(cat).isEmpty) }.getOrElse(false) }.getOrElse(true)
-
+  private def isCandidateItem(i: Int,
+                              item: Item,
+                              genres: Option[Set[String]],
+                              whiteList: Option[Set[Int]],
+                              blackList: Set[Int]
+                             ): Boolean = {
+    whiteList.map(_.contains(i)).getOrElse(true) & !blackList.contains(i) &
+      (genres.map { genre => genre.map(g => Constants.GENDER_FIELDS.indexOf(g)) } match {
+        case Some(indexes) => indexes.forall { index => item.genres(index) == 1 }
+        case None => true
+      })
   }
 
 }
