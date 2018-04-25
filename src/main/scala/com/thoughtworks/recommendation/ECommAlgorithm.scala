@@ -41,7 +41,8 @@ class ECommModel(val rank: Int,
                  val productModels: Map[Int, ProductModel],
                  val userStringIntMap: BiMap[String, Int],
                  val itemStringIntMap: BiMap[String, Int],
-                 val items: Map[Int, Item]
+                 val items: Map[Int, Item],
+                 val users: Map[Int, User]
                 ) extends Serializable {
 
   @transient lazy val itemIntStringMap = itemStringIntMap.inverse
@@ -112,6 +113,7 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
     val userFeatures = m.userFeatures.collectAsMap.toMap
 
     val items = data.items.map { case (id, item) => (itemStringIntMap(id), item) }
+    val users = data.users.map { case (id, user) => (userStringIntMap(id), user) }
 
     // Product Vectors
     val productFeatures: Map[Int, (Item, Option[Array[Double]])] = items.leftOuterJoin(m.productFeatures).collectAsMap.toMap
@@ -132,7 +134,8 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
       productModels = productModels,
       userStringIntMap = userStringIntMap,
       itemStringIntMap = itemStringIntMap,
-      items = items.collectAsMap().toMap
+      items = items.collectAsMap().toMap,
+      users = users.collectAsMap().toMap
     )
   }
 
@@ -259,11 +262,10 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
       }
     }
 
-
+    var url = "http://localhost:8001'}/wdn/movie"
 
     val itemScores = topScores.map { case (i, s) =>
       val it = model.items(i)
-
       new ItemScore(
         item = model.itemIntStringMap(i),
         title = it.title,
