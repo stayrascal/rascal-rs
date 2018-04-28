@@ -103,7 +103,8 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
 
     val m: MatrixFactorizationModel = ALS.train(
       ratings = mllibRatings,
-      rank = ap.rank, iterations = ap.numIterations,
+      rank = ap.rank,
+      iterations = ap.numIterations,
       lambda = ap.lambda,
       blocks = -1,
       seed = seed
