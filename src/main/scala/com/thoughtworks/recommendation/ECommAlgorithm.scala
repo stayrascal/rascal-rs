@@ -205,7 +205,7 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
     } yield (index, group.weight)).toMap.withDefaultValue(1.0)
 
     val userFeature: Option[Array[Double]] =
-      model.userStringIntMap.get(query.user).flatMap { userIndex => userFeatures.get(userIndex) }
+      model.userStringIntMap.get(query.user.getOrElse("0")).flatMap { userIndex => userFeatures.get(userIndex) }
 
     // 1. If this user can be found, will dot user vector and product vector, if not found, will get latest products the user viewed
     // 2. If the latest products the user viewed can be found, find similar products
@@ -267,12 +267,7 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
 
     val itemScores = topScores.map { case (i, s) =>
       val it = model.items(i)
-      new ItemScore(
-        item = model.itemIntStringMap(i),
-        title = it.title,
-        releaseDate = it.releaseDate,
-        genres = Constants.GENDER_FIELDS.zip(it.genres).toMap,
-        score = s)
+      new ItemScore(item = model.itemIntStringMap(i), score = s)
     }
 
     new PredictedResult(itemScores)
@@ -285,7 +280,7 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
         LEventStore.findByEntity(
           appName = ap.appName,
           entityType = "user",
-          entityId = query.user,
+          entityId = query.user.getOrElse("0"),
           eventNames = Some(ap.seenEvents),
           targetEntityType = Some(Some("item")),
           timeout = Duration(200, "millis")
@@ -374,7 +369,7 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
       LEventStore.findByEntity(
         appName = ap.appName,
         entityType = "user",
-        entityId = query.user,
+        entityId = query.user.getOrElse("0"),
         eventNames = Some(ap.similarEvents),
         targetEntityType = Some(Some("item")),
         limit = Some(10),
@@ -425,7 +420,7 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
       .seq
 
     val ord = Ordering.by[(Int, Double), Double](_._2).reverse
-    val topScores = getTopN(indexScores, query.num)(ord).toArray
+    val topScores = getTopN(indexScores, query.num.getOrElse(10))(ord).toArray
 
     topScores
   }
@@ -448,7 +443,7 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
       .seq
 
     val ord = Ordering.by[(Int, Double), Double](_._2).reverse
-    val topScores = getTopN(indexScores, query.num)(ord).toArray
+    val topScores = getTopN(indexScores, query.num.getOrElse(10))(ord).toArray
 
     topScores
   }
@@ -473,7 +468,7 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
       .seq
 
     val ord = Ordering.by[(Int, Double), Double](_._2).reverse
-    val topScores = getTopN(indexScores, query.num)(ord).toArray
+    val topScores = getTopN(indexScores, query.num.getOrElse(10))(ord).toArray
 
     topScores
   }

@@ -42,11 +42,6 @@ class DataSource(val dsp: DataSourceParams) extends PDataSource[TrainingData, Em
     val buyRDD: RDD[BuyEvent] = getBuyEventsRDD(sc)
 
     val ratings: RDD[(RatingEvent, Long)] = ratingsRDD.zipWithIndex().cache()
-    /*val buysEvents: RDD[(String, Iterable[BuyEvent])] = buyEventsRDD.groupBy(_.user)
-
-    val actualData = buysEvents.map { case (user, buys) => (Query(user, evalParams.queryNum, None, None, None), ActualResult(buys.map(v => ItemScore(v.item, 0)).toArray)) }*/
-
-    /*actualData.collect().foreach(data => println(s"${data._1.user} => ${data._1.num} => ${data._2.buyItems.mkString(",")}"))*/
 
     (0 until kFold).map {
       idx => {
@@ -59,7 +54,7 @@ class DataSource(val dsp: DataSourceParams) extends PDataSource[TrainingData, Em
           ratingEvents = trainingData,
           buyEvents = buyRDD
         ), new EmptyEvaluationInfo(),
-          testUsers.map { case (user, ratings) => (Query(user, evalParams.queryNum, None, None, None), ActualResult(ratings.toArray)) }
+          testUsers.map { case (user, ratings) => (Query(Some(user), Some(evalParams.queryNum)), ActualResult(ratings.toArray)) }
         )
       }
     }
