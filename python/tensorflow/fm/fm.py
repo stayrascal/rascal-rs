@@ -53,8 +53,8 @@ def batcher(X_, y_=None, batch_size=-1):
 
 cols = ['user', 'item', 'rating', 'timestamp']
 
-train = pd.read_csv('data/ua.base', delimiter='\t', names=cols)
-test = pd.read_csv('data/ua.test', delimiter='\t', names=cols)
+train = pd.read_csv('../data/ua.base', delimiter='\t', names=cols)
+test = pd.read_csv('../data/ua.test', delimiter='\t', names=cols)
 
 x_train, ix = vectorize_dic({'users': train['user'].values,
                              'items': train['item'].values}, n=len(train.index), g=2)
