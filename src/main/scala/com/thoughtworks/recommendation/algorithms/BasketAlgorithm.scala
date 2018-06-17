@@ -1,6 +1,6 @@
 package com.thoughtworks.recommendation.algorithms
 
-import com.thoughtworks.recommendation.{PreparedData, Query}
+import com.thoughtworks.recommendation.{PreparedData1, Query1}
 import grizzled.slf4j.Logger
 import org.apache.predictionio.controller.{P2LAlgorithm, Params}
 import org.apache.spark.SparkContext
@@ -16,13 +16,13 @@ case class BasketAlgorithmParams(basketWindow: Int,
                                  maxNumRulesPerCond: Int // max number of rules per condition
                           ) extends Params
 
-class BasketAlgorithm(val ap: BasketAlgorithmParams) extends P2LAlgorithm[PreparedData, Model, Query, PreparedData] {
+class BasketAlgorithm(val ap: BasketAlgorithmParams) extends P2LAlgorithm[PreparedData1, Model, Query1, PreparedData1] {
 
   @transient lazy val maxCondLength = ap.maxRuleLength - 1
   @transient lazy val logger = Logger[this.type]
 
 
-  override def train(sc: SparkContext, pd: PreparedData) = {
+  override def train(sc: SparkContext, pd: PreparedData1) = {
     val windowMillis = ap.basketWindow * 1000
     require(ap.maxRuleLength >= 2, s"maxRuleLength must be at least 2. Current: ${ap.maxRuleLength}.")
     require((ap.minSupport >= 0 && ap.minSupport < 1), s"minSupport must be >= 0 and < 1. Current: ${ap.minSupport}.")
@@ -103,7 +103,7 @@ class BasketAlgorithm(val ap: BasketAlgorithmParams) extends P2LAlgorithm[Prepar
 
     new PredictedResult(rules)
   }*/
-  override def predict(model: Model, query: Query) = ???
+  override def predict(model: Model, query: Query1) = ???
 }
 
 case class ItemAndTime[T](item: T, t: Long)

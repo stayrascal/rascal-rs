@@ -4,12 +4,12 @@ import org.apache.predictionio.controller._
 
 
 case class PrecisionAtK(k: Int, ratingThreshold: Double = 2.0)
-  extends OptionAverageMetric[EmptyEvaluationInfo, Query, PredictedResult, ActualResult] {
+  extends OptionAverageMetric[EmptyEvaluationInfo, Query1, PredictedResult, ActualResult] {
   require(k > 0, "k must be greater than 0")
 
   override def header: String = s"Precision@K (k=$k, threshold=$ratingThreshold)"
 
-  override def calculate(q: Query, p: PredictedResult, a: ActualResult): Option[Double] = {
+  override def calculate(q: Query1, p: PredictedResult, a: ActualResult): Option[Double] = {
     val positives: Set[String] = a.ratings.filter(_.rating > ratingThreshold).map(_.item).toSet
 
     if (positives.isEmpty) {
@@ -22,12 +22,12 @@ case class PrecisionAtK(k: Int, ratingThreshold: Double = 2.0)
 }
 
 case class RecallAtK(k: Int, ratingThreshold: Double = 2.0)
-  extends OptionAverageMetric[EmptyEvaluationInfo, Query, PredictedResult, ActualResult] {
+  extends OptionAverageMetric[EmptyEvaluationInfo, Query1, PredictedResult, ActualResult] {
   require(k > 0, "k must be greater than 0")
 
   override def header: String = s"Recall@K (k=$k, threshold=$ratingThreshold)"
 
-  override def calculate(q: Query, p: PredictedResult, a: ActualResult): Option[Double] = {
+  override def calculate(q: Query1, p: PredictedResult, a: ActualResult): Option[Double] = {
     val positives: Set[String] = a.ratings.filter(_.rating > ratingThreshold).map(_.item).toSet
 
     if (positives.isEmpty) {
@@ -39,11 +39,11 @@ case class RecallAtK(k: Int, ratingThreshold: Double = 2.0)
   }
 }
 
-case class PositiveCount(ratingThreshold: Double = 2.0) extends AverageMetric[EmptyEvaluationInfo, Query, PredictedResult, ActualResult] {
+case class PositiveCount(ratingThreshold: Double = 2.0) extends AverageMetric[EmptyEvaluationInfo, Query1, PredictedResult, ActualResult] {
 
   override def header = s"PositiveCount (threshold=$ratingThreshold)"
 
-  override def calculate(q: Query, p: PredictedResult, a: ActualResult): Double = {
+  override def calculate(q: Query1, p: PredictedResult, a: ActualResult): Double = {
     a.ratings.count(_.rating > ratingThreshold)
   }
 }

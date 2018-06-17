@@ -60,11 +60,11 @@ class ECommModel(val rank: Int,
   }
 }
 
-class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[PreparedData, ECommModel, Query, PredictedResult] {
+class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[PreparedData1, ECommModel, Query1, PredictedResult] {
 
   @transient lazy val logger = Logger[this.type]
 
-  def train(sc: SparkContext, data: PreparedData): ECommModel = {
+  def train(sc: SparkContext, data: PreparedData1): ECommModel = {
     require(!data.ratingEvents.take(1).isEmpty,
       s"ratingEvents in PreparedData cannot be empty." +
         " Please check if DataSource generates TrainingData" +
@@ -143,7 +143,7 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
 
   def genMLlibRating(userStringIntMap: BiMap[String, Int],
                      itemStringIntMap: BiMap[String, Int],
-                     data: PreparedData): RDD[MLlibRating] = {
+                     data: PreparedData1): RDD[MLlibRating] = {
 
     val mllibRatings = data.ratingEvents
       .map { r =>
@@ -166,7 +166,7 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
 
   def trainDefault(userStringIntMap: BiMap[String, Int],
                    itemStringIntMap: BiMap[String, Int],
-                   data: PreparedData): Map[Int, Int] = {
+                   data: PreparedData1): Map[Int, Int] = {
     val buyCountsRDD: RDD[(Int, Int)] = data.buyEvents
       .map { r =>
         val uindex = userStringIntMap.getOrElse(r.user, -1)
@@ -187,9 +187,9 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
     buyCountsRDD.collectAsMap.toMap
   }
 
-  override def batchPredict(model: ECommModel, query: RDD[(Long, Query)]): RDD[(Long, PredictedResult)] = super.batchPredict(model, query)
+  override def batchPredict(model: ECommModel, query: RDD[(Long, Query1)]): RDD[(Long, PredictedResult)] = super.batchPredict(model, query)
 
-  def predict(model: ECommModel, query: Query): PredictedResult = {
+  def predict(model: ECommModel, query: Query1): PredictedResult = {
     val userFeatures = model.userFeatures
     val productModels = model.productModels
     //    query.whiteList.map(model.itemStringIntMap.get)
@@ -273,7 +273,7 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
     new PredictedResult(itemScores)
   }
 
-  def genBlackList(query: Query): Set[String] = {
+  def genBlackList(query: Query1): Set[String] = {
     val seenItems: Set[String] = if (ap.unseenOnly) {
 
       val seenEvents: Iterator[Event] = try {
@@ -363,7 +363,7 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
     }
   }
 
-  def getRecentItems(query: Query): Set[String] = {
+  def getRecentItems(query: Query1): Set[String] = {
     // get latest 10 user view item events
     val recentEvents = try {
       LEventStore.findByEntity(
@@ -401,7 +401,7 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
 
   def predictKnownUser(userFeature: Array[Double],
                        productModels: Map[Int, ProductModel],
-                       query: Query,
+                       query: Query1,
                        whiteList: Option[Set[Int]],
                        blackList: Set[Int],
                        weights: Map[Int, Double]
@@ -426,7 +426,7 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
   }
 
   def predictDefault(productModels: Map[Int, ProductModel],
-                     query: Query,
+                     query: Query1,
                      whiteList: Option[Set[Int]],
                      blackList: Set[Int],
                      weights: Map[Int, Double]
@@ -450,7 +450,7 @@ class ECommAlgorithm(val ap: ECommAlgorithmParams) extends P2LAlgorithm[Prepared
 
   def predictSimilar(recentFeatures: Vector[Array[Double]],
                      productModels: Map[Int, ProductModel],
-                     query: Query,
+                     query: Query1,
                      whiteList: Option[Set[Int]],
                      blackList: Set[Int],
                      weights: Map[Int, Double]
